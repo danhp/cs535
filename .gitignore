@@ -1,4 +1,7 @@
 target/
 
+*.iml
 *.class
+*.idea/
+*.metadata/
 *.jar

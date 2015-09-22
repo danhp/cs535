@@ -3,23 +3,54 @@ package socs.network.node;
 import socs.network.util.Configuration;
 
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStreamReader;
+import java.net.ServerSocket;
+import java.net.Socket;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.Random;
 
 
 public class Router {
     protected LinkStateDatabase lsd;
+    private boolean serverIsRunning;
+
+    private ServerSocket serverSocket;
+
 
     RouterDescription rd = new RouterDescription();
 
+
     //assuming that all routers are with 4 ports
     // Link[] ports = new Link[4];
-    List<Link> ports = new ArrayList<Link>(4);
+    public static List<Link> ports = new ArrayList<Link>(4);
 
     public Router(Configuration config) {
         rd.simulatedIPAddress = config.getString("socs.network.router.ip");
         lsd = new LinkStateDatabase(rd);
+        serverIsRunning = false;
+
+        System.out.println("Router initialized with IP : " + rd.simulatedIPAddress);
+
+
+        try {
+
+            int n = (new Random()).nextInt(1000) + 5000;
+
+            //Create & open new socket
+            serverSocket = new ServerSocket(n);
+            System.out.println("Local IP " + serverSocket.getLocalSocketAddress() + " Local Port: " + serverSocket.getLocalPort());
+
+            rd.processIPAddress = serverSocket.getLocalSocketAddress().toString();
+            rd.processPortNumber = (short) serverSocket.getLocalPort();
+
+        } catch (IOException ex) {
+            System.out.println(ex);
+        } catch (Exception ex) {
+            System.out.println(ex);
+        }
+
     }
 
     /**
@@ -51,34 +82,83 @@ public class Router {
 
     /**
      * attach the link to the remote router, which is identified by the given simulated ip;
-     * to establish the connection via socket, you need to indentify the process IP and process Port;
+     * to establish the connection via socket, you need to identify the process IP and process Port;
      * additionally, weight is the cost to transmitting data through the link
      * <p/>
      * NOTE: this command should not trigger link database synchronization
      */
     private void processAttach(String processIP, short processPort, String simulatedIP, short weight) {
+
+        //add new link to list of ports
+
+        //if ports are full, or ports already contains the attachment
         if (this.ports.size() >= 4) {
             System.out.println(this.rd.simulatedIPAddress + " is at capacity.");
             return;
         }
 
-        RouterDescription newRd = new RouterDescription();
+        for (Link l : ports) {
+            if (l.router2.simulatedIPAddress.equals(simulatedIP)) {
+                System.out.println(simulatedIP + " Address already exists in ports");
+                return;
+            }
+        }
 
+        RouterDescription newRd = new RouterDescription();
         newRd.processIPAddress = processIP;
         newRd.processPortNumber = processPort;
         newRd.simulatedIPAddress = simulatedIP;
-        newRd.status = RouterStatus.INIT;
 
         Link newLink = new Link(this.rd, newRd);
-        ports.add(newLink);
 
-        // TODO: Add info to LinkStateDatabase
+        try {
+            Socket socket = new Socket(newRd.processIPAddress, newRd.processPortNumber);
+            new Thread(new ClientWorker(socket, rd, newLink)).start();
+
+        } catch (IOException ex) {
+            System.out.println(ex);
+        }
     }
 
     /**
      * broadcast Hello to neighbors
      */
     private void processStart() {
+        if (serverIsRunning) {
+            System.out.println("The server is already running");
+            return;
+        }
+
+        new Thread(new Runnable() {
+            public void run() {
+                serverIsRunning = true;
+
+                try {
+                    while (true) {
+                        Socket serviceSocket = serverSocket.accept();
+
+                        if (Router.ports.size() >= 4) {
+                            System.out.println("No more ports free");
+                            continue;
+                        }
+
+                        RouterDescription remote = new RouterDescription();
+                        remote.status = RouterStatus.INIT;
+                        Link newLink = new Link(rd, remote);
+                        Router.ports.add(newLink);
+
+                        //spawn thread for confirmation of accepted socket
+                        new Thread(new ServerWorker(serviceSocket, rd, newLink)).start();
+
+                    }
+
+                } catch (IOException ex) {
+                    System.out.println(ex);
+                } catch (Exception ex) {
+                    System.out.println(ex);
+                }
+            }
+        }).start();
 
     }
 
