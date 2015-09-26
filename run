@@ -1,0 +1,9 @@
+#!/bin/bash
+
+if [ $# -ne 1 ]; then
+    echo $0 require 1 arg
+    exit 1
+fi
+
+
+java -cp target/COMP535-1.0-SNAPSHOT-jar-with-dependencies.jar socs.network.Main conf/router$1.conf
