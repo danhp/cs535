@@ -85,19 +85,6 @@ public class Router {
      */
     private void processAttach(String processIP, short processPort, String simulatedIP, short weight) {
 
-        //if ports are full, or ports already contains the attachment
-        if (this.ports.size() >= 4) {
-            System.out.println(this.rd.simulatedIPAddress + " is at capacity.");
-            return;
-        }
-
-        for (Link l : ports) {
-            if (l.router2.processPortNumber == processPort) {
-                System.out.println(simulatedIP + " Address already exists in ports");
-                return;
-            }
-        }
-
         RouterDescription newRd = new RouterDescription();
         newRd.processIPAddress = processIP;
         newRd.processPortNumber = processPort;
@@ -112,6 +99,24 @@ public class Router {
         } catch (IOException ex) {
             System.out.println(ex);
         }
+    }
+
+    public static synchronized boolean addLink(Link link) {
+        //if ports are full, or ports already contains the attachment
+        if (ports.size() >= 4) {
+            System.out.println(link.router1.simulatedIPAddress + " is at capacity.");
+            return false;
+        }
+
+        for (Link l : ports) {
+            if (l.router2.processPortNumber != 0 && l.router2.processPortNumber == link.router2.processPortNumber) {
+                System.out.println(link.router2.processPortNumber + " already exists in ports list.");
+                return false;
+            }
+        }
+
+        ports.add(link);
+        return true;
     }
 
     /**
@@ -131,15 +136,16 @@ public class Router {
                     while (true) {
                         Socket serviceSocket = serverSocket.accept();
 
-                        if (Router.ports.size() >= 4) {
-                            System.out.println("No more ports free");
-                            continue;
-                        }
-
                         RouterDescription remote = new RouterDescription();
                         remote.status = RouterStatus.INIT;
                         Link newLink = new Link(rd, remote);
-                        Router.ports.add(newLink);
+
+                        // Try to add the new connection.
+                        boolean success = Router.addLink(newLink);
+                        if (!success){
+                            serviceSocket.close();
+                            continue;
+                        }
 
                         //spawn thread for confirmation of accepted socket
                         new Thread(new ServerWorker(serviceSocket, rd, newLink)).start();
@@ -174,7 +180,7 @@ public class Router {
             if (l == null) continue;
 
             // By construction, self router is router1 in its own ports list.
-            System.out.println("IP Address: " + l.router2.simulatedIPAddress);
+            System.out.println("IP Address: " + l.router2.simulatedIPAddress + " Port: " + l.router2.processPortNumber);
         }
     }
 

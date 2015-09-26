@@ -58,7 +58,9 @@ public class ServerWorker implements Runnable {
             }
 
         } catch (IOException ex) {
-//            System.out.println(ex);
+            if (this.newLink.router2.simulatedIPAddress == null) return;
+            if (!Router.ports.contains(this.newLink)) return;
+
             System.out.println("Lost connection to: " + this.newLink.router2.simulatedIPAddress);
             Router.ports.remove(this.newLink);
         } catch (Exception ex) {

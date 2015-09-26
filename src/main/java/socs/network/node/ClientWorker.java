@@ -30,8 +30,13 @@ public class ClientWorker implements Runnable {
                 //If response = HELLO
                 if (responsePacket.sospfType == 0) {
                     if (link.router2.status == null) {
+
                         //add link
-                        Router.ports.add(link);
+                        boolean success = Router.addLink(this.link);
+                        if (!success) {
+                            clientSocket.close();
+                            return;
+                        }
                         this.link.router2.simulatedIPAddress = responsePacket.srcIP;
                         this.link.router2.status = RouterStatus.INIT;
 
@@ -48,6 +53,7 @@ public class ClientWorker implements Runnable {
                         output.writeObject(returnPacket);
                     }
                     else {
+
                         //otherwise has been INIT and want to finalize connection
                         this.link.router2.status = RouterStatus.TWO_WAY;
                     }
@@ -57,7 +63,7 @@ public class ClientWorker implements Runnable {
                 }
             }
         } catch(IOException ex) {
-//            System.out.println(ex);
+            if (this.link.router2.simulatedIPAddress == null ) return;
             System.out.println("Lost connection to: " + this.link.router2.simulatedIPAddress);
             Router.ports.remove(this.link);
         } catch (ClassNotFoundException ex) {
