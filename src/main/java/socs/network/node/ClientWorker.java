@@ -7,7 +7,6 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.Socket;
 
-
 public class ClientWorker implements Runnable {
 
     private Socket clientSocket;
@@ -33,7 +32,8 @@ public class ClientWorker implements Runnable {
                     if (link.router2.status == null) {
                         //add link
                         Router.ports.add(link);
-                        link.router2.status = RouterStatus.INIT;
+                        this.link.router2.simulatedIPAddress = responsePacket.srcIP;
+                        this.link.router2.status = RouterStatus.INIT;
 
                         //Client response -> Server
                         SOSPFPacket returnPacket = new SOSPFPacket();
@@ -49,21 +49,21 @@ public class ClientWorker implements Runnable {
                     }
                     else {
                         //otherwise has been INIT and want to finalize connection
-                        link.router2.status = RouterStatus.TWO_WAY;
+                        this.link.router2.status = RouterStatus.TWO_WAY;
                     }
 
                     System.out.println("Received HELLO from " + link.router2.simulatedIPAddress + " : ");
                     System.out.println("Set " + link.router2.simulatedIPAddress + " state to " + link.router2.status);
                 }
             }
-
         } catch(IOException ex) {
-            System.out.println(ex);
+//            System.out.println(ex);
+            System.out.println("Lost connection to: " + this.link.router2.simulatedIPAddress);
+            Router.ports.remove(this.link);
         } catch (ClassNotFoundException ex) {
             System.out.println(ex);
         } catch (Exception ex) {
             System.out.println(ex);
         }
     }
-
 }

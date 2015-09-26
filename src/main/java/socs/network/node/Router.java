@@ -21,7 +21,6 @@ public class Router {
 
     RouterDescription rd = new RouterDescription();
 
-
     //assuming that all routers are with 4 ports
     // Link[] ports = new Link[4];
     public static List<Link> ports = new ArrayList<Link>(4);
@@ -33,9 +32,7 @@ public class Router {
 
         System.out.println("Router initialized with IP : " + rd.simulatedIPAddress);
 
-
         try {
-
             int n = (new Random()).nextInt(1000) + 5000;
 
             //Create & open new socket
@@ -50,7 +47,6 @@ public class Router {
         } catch (Exception ex) {
             System.out.println(ex);
         }
-
     }
 
     /**
@@ -89,8 +85,6 @@ public class Router {
      */
     private void processAttach(String processIP, short processPort, String simulatedIP, short weight) {
 
-        //add new link to list of ports
-
         //if ports are full, or ports already contains the attachment
         if (this.ports.size() >= 4) {
             System.out.println(this.rd.simulatedIPAddress + " is at capacity.");
@@ -98,7 +92,7 @@ public class Router {
         }
 
         for (Link l : ports) {
-            if (l.router2.simulatedIPAddress.equals(simulatedIP)) {
+            if (l.router2.processPortNumber == processPort) {
                 System.out.println(simulatedIP + " Address already exists in ports");
                 return;
             }
@@ -149,9 +143,7 @@ public class Router {
 
                         //spawn thread for confirmation of accepted socket
                         new Thread(new ServerWorker(serviceSocket, rd, newLink)).start();
-
                     }
-
                 } catch (IOException ex) {
                     System.out.println(ex);
                 } catch (Exception ex) {
@@ -159,7 +151,6 @@ public class Router {
                 }
             }
         }).start();
-
     }
 
     /**

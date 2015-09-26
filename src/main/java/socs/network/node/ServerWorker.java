@@ -9,9 +9,6 @@ import java.io.ObjectOutput;
 import java.io.ObjectOutputStream;
 import java.net.Socket;
 
-/**
- * Created by hmsimmonds on 15-09-22.
- */
 public class ServerWorker implements Runnable {
 
     private Socket serviceSocket;
@@ -61,7 +58,9 @@ public class ServerWorker implements Runnable {
             }
 
         } catch (IOException ex) {
-            System.out.println(ex);
+//            System.out.println(ex);
+            System.out.println("Lost connection to: " + this.newLink.router2.simulatedIPAddress);
+            Router.ports.remove(this.newLink);
         } catch (Exception ex) {
             System.out.println(ex);
         }
