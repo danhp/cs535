@@ -1,5 +1,7 @@
 package socs.network.node;
 
+import socs.network.message.LSA;
+import socs.network.message.LinkDescription;
 import socs.network.util.Configuration;
 
 import java.io.BufferedReader;
@@ -13,7 +15,7 @@ import java.util.Random;
 
 
 public class Router {
-    protected LinkStateDatabase lsd;
+    protected static LinkStateDatabase lsd;
     private boolean serverIsRunning;
 
     private ServerSocket serverSocket;
@@ -47,6 +49,37 @@ public class Router {
         } catch (Exception ex) {
             System.out.println(ex);
         }
+
+        // Start the server
+        new Thread(new Runnable() {
+            public void run() {
+                try {
+                    while (true) {
+                        Socket serviceSocket = serverSocket.accept();
+
+                        RouterDescription remote = new RouterDescription();
+                        remote.status = null;
+
+                        // Tag link weight to -1 so we update it later
+                        Link newLink = new Link(rd, remote,(short) -1);
+
+                        // Try to add the new connection.
+                        boolean success = Router.addLink(newLink);
+                        if (!success){
+                            serviceSocket.close();
+                            continue;
+                        }
+
+                        //spawn thread for confirmation of accepted socket
+                        new Thread(new ServerWorker(serviceSocket, rd, newLink)).start();
+                    }
+                } catch (IOException ex) {
+                    System.out.println(ex);
+                } catch (Exception ex) {
+                    System.out.println(ex);
+                }
+            }
+        }).start();
     }
 
     /**
@@ -57,6 +90,15 @@ public class Router {
      * @param destinationIP the ip adderss of the destination simulated router
      */
     private void processDetect(String destinationIP) {
+        System.out.println(lsd.getShortestPath(destinationIP));
+    }
+
+    public static synchronized void triggerUpdateAdd() {
+        System.out.println(lsd);
+
+    }
+
+    public static synchronized void triggerUpdateRemove(String simulatedAdress) {
 
     }
 
@@ -90,15 +132,8 @@ public class Router {
         newRd.processPortNumber = processPort;
         newRd.simulatedIPAddress = simulatedIP;
 
-        Link newLink = new Link(this.rd, newRd);
-
-        try {
-            Socket socket = new Socket(newRd.processIPAddress, newRd.processPortNumber);
-            new Thread(new ClientWorker(socket, rd, newLink)).start();
-
-        } catch (IOException ex) {
-            System.out.println(ex);
-        }
+        Link newLink = new Link(this.rd, newRd, weight);
+        boolean success = this.addLink(newLink);
     }
 
     public static synchronized boolean addLink(Link link) {
@@ -116,47 +151,40 @@ public class Router {
         }
 
         ports.add(link);
+
         return true;
     }
 
+    public static synchronized void addToDatabase(Link link) {
+        // Add to database
+        LinkDescription ld = new LinkDescription();
+        ld.linkID = link.router2.simulatedIPAddress;
+        ld.portNum = link.router2.processPortNumber;
+        ld.tosMetrics = link.weight;
+
+        LSA lsa = lsd._store.get(link.router1.simulatedIPAddress);
+        lsa.links.add(ld);
+        lsa.lsaSeqNumber++;
+    }
+
+    public static synchronized void removeFromDatabase(Link link) {
+
+    }
+
     /**
-     * broadcast Hello to neighbors
+     * broadcast initial Hello to neighbors
      */
     private void processStart() {
-        if (serverIsRunning) {
-            System.out.println("The server is already running");
-            return;
-        }
+        for (Link l : ports) {
+            if (l == null) continue;
 
-        new Thread(new Runnable() {
-            public void run() {
-                serverIsRunning = true;
-
-                try {
-                    while (true) {
-                        Socket serviceSocket = serverSocket.accept();
-
-                        RouterDescription remote = new RouterDescription();
-                        remote.status = RouterStatus.INIT;
-                        Link newLink = new Link(rd, remote);
-
-                        // Try to add the new connection.
-                        boolean success = Router.addLink(newLink);
-                        if (!success){
-                            serviceSocket.close();
-                            continue;
-                        }
-
-                        //spawn thread for confirmation of accepted socket
-                        new Thread(new ServerWorker(serviceSocket, rd, newLink)).start();
-                    }
-                } catch (IOException ex) {
-                    System.out.println(ex);
-                } catch (Exception ex) {
-                    System.out.println(ex);
-                }
+            try {
+                Socket socket = new Socket(l.router2.processIPAddress, l.router2.processPortNumber);
+                new Thread(new ClientWorker(socket, this.rd, l)).start();
+            } catch (IOException ex) {
+                System.out.println(ex);
             }
-        }).start();
+        }
     }
 
     /**

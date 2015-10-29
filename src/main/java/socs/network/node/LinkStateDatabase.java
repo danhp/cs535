@@ -22,8 +22,10 @@ public class LinkStateDatabase {
      * output the shortest path from this router to the destination with the given IP address
      */
     String getShortestPath(String destinationIP) {
-        //TODO: fill the implementation here
-        return null;
+        String result = new String();
+
+
+        return result;
     }
 
     //initialize the linkstate database by adding an entry about the router itself

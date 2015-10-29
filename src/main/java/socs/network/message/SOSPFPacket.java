@@ -14,6 +14,9 @@ public class SOSPFPacket implements Serializable {
   public String srcIP;
   public String dstIP;
 
+  // Link weight
+  public short weight;
+
   //common header
   public short sospfType; //0 - HELLO, 1 - LinkState Update
   public String routerID;
