@@ -66,13 +66,6 @@ public class Router {
                         // Tag link weight to -1 so we update it later
                         Link newLink = new Link(rd, remote,(short) -1);
 
-                        // Try to add the new connection.
-                        boolean success = Router.addLink(newLink);
-                        if (!success){
-                            serviceSocket.close();
-                            continue;
-                        }
-
                         //spawn thread for confirmation of accepted socket
                         new Thread(new ServerWorker(serviceSocket, rd, newLink)).start();
                     }
@@ -99,7 +92,6 @@ public class Router {
     }
 
     public static synchronized void triggerUpdateAdd() {
-        System.out.println("Triggering Update");
         for (Link l: ports) {
             if (l == null) continue;
 
@@ -231,12 +223,8 @@ public class Router {
      */
     private void processQuit() {
         // TODO: Announce this router is quitting.
-        for (Link l : this.ports) {
-            this.ports.remove(l);
-
-        }
-
         System.out.println("Process has quit succesfully.");
+        return;
     }
 
     public void terminal() {
@@ -284,6 +272,7 @@ public class Router {
             }
             isReader.close();
             br.close();
+            System.exit(0);
         } catch (Exception e) {
             e.printStackTrace();
         }

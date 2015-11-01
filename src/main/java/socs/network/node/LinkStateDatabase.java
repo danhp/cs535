@@ -23,7 +23,7 @@ public class LinkStateDatabase {
      * output the shortest path from this router to the destination with the given IP address
      */
     String getShortestPath(String destinationIP) {
-        if (destinationIP.equals(rd.simulatedIPAddress)) return "";
+        if (destinationIP.equals(rd.simulatedIPAddress)) return "No Path Found";
 
         PriorityQueue<Node> queue = new PriorityQueue<Node>(_store.size(), new Comparator<Node>() {
             public int compare(Node o1, Node o2) {
@@ -60,7 +60,6 @@ public class LinkStateDatabase {
                 seenSoFar.put(current.nodeId, true);
 
                 if (l.linkID.equals(destinationIP)) {
-                    System.out.println("Path Found");
                     ArrayList<String> path = new ArrayList<String>();
                     path.add(destinationIP);
 
@@ -76,7 +75,7 @@ public class LinkStateDatabase {
                 }
             }
         }
-        return "";
+        return "No path found";
     }
 
     private String formatPath(ArrayList<String> path) {

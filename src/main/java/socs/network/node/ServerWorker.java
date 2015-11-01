@@ -54,13 +54,11 @@ public class ServerWorker implements Runnable {
                         //otherwise has been INIT and want to finalize connection
                         this.link.router2.status = RouterStatus.TWO_WAY;
 
-                        // replace the information in the ports list.
-                        for (Link l : Router.ports) {
-                            // Incomplete link were tagged with -1
-                            if (l.weight < 0 ) {
-                                l = this.link;
-                                break;
-                            }
+                        // Try to add the new connection.
+                        boolean success = Router.addLink(link);
+                        if (!success){
+                            serviceSocket.close();
+                            continue;
                         }
 
                         // Add link to database
@@ -90,7 +88,6 @@ public class ServerWorker implements Runnable {
                     }
 
                     if (!alreadySeen) {
-                        System.out.println("Triggered Update");
                         Router.triggerUpdateAdd();
                     }
                 }
