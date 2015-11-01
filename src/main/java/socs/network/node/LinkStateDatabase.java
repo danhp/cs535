@@ -4,6 +4,7 @@ import socs.network.message.LSA;
 import socs.network.message.LinkDescription;
 
 import java.lang.reflect.Array;
+import java.sql.SQLSyntaxErrorException;
 import java.util.*;
 
 public class LinkStateDatabase {
@@ -36,9 +37,9 @@ public class LinkStateDatabase {
 
         HashMap<String, String> cameFrom = new HashMap<String, String>();
         HashMap<String, Integer> costSoFar = new HashMap<String, Integer>();
-        HashMap<String, Boolean> seenSoFar = new HashMap<String, Boolean>();
+        List<String> seenSoFar = new ArrayList<String>();
 
-        seenSoFar.put(rd.simulatedIPAddress, true);
+        seenSoFar.add(rd.simulatedIPAddress);
         costSoFar.put(start.nodeId, 0);
         queue.add(start);
 
@@ -49,23 +50,27 @@ public class LinkStateDatabase {
             for (LinkDescription l : _store.get(current.nodeId).links) {
 
                 // weigth of 0 is the same router we already saw
-                if (l.tosMetrics == 0) continue;
+                if (l.tosMetrics == 0) {
+                    seenSoFar.add(l.linkID);
+                    continue;
+                }
                 int newCost = costSoFar.get(current.nodeId) + l.tosMetrics;
 
-                if (!seenSoFar.containsKey(l.linkID)){
+                if (!seenSoFar.contains(l.linkID)){
                     queue.add(new Node(newCost, l.linkID));
                     costSoFar.put(l.linkID, newCost);
                     cameFrom.put(l.linkID, current.nodeId);
                 }
-                seenSoFar.put(current.nodeId, true);
+                seenSoFar.add(l.linkID);
 
                 if (l.linkID.equals(destinationIP)) {
+                    System.out.println("Path Found");
                     ArrayList<String> path = new ArrayList<String>();
                     path.add(destinationIP);
 
                     String currentName = destinationIP;
                     while(!currentName.equals(rd.simulatedIPAddress)) {
-                        currentName = cameFrom.get(l.linkID);
+                        currentName = cameFrom.get(currentName);
                         path.add(currentName);
                     }
 

@@ -87,6 +87,8 @@ public class ServerWorker implements Runnable {
 
                     }
 
+                    System.out.println(Router.lsd.toString());
+
                     if (!alreadySeen) {
                         Router.triggerUpdateAdd();
                     }

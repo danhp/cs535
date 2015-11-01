@@ -29,6 +29,7 @@ public class Router {
     //assuming that all routers are with 4 ports
     // Link[] ports = new Link[4];
     public static List<Link> ports = new ArrayList<Link>(4);
+    private static List<Link> toAttach = new ArrayList<Link>(4);
 
     public Router(Configuration config) {
         rd.simulatedIPAddress = config.getString("socs.network.router.ip");
@@ -86,8 +87,6 @@ public class Router {
      * @param destinationIP the ip adderss of the destination simulated router
      */
     private void processDetect(String destinationIP) {
-        System.out.println(lsd);
-
         System.out.println(lsd.getShortestPath(destinationIP));
     }
 
@@ -140,11 +139,15 @@ public class Router {
 
         Link newLink = new Link(this.rd, newRd, weight);
         boolean success = this.addLink(newLink);
+        if (success) {
+            this.ports.remove(newLink);
+            this.toAttach.add(newLink);
+        }
     }
 
     public static synchronized boolean addLink(Link link) {
         //if ports are full, or ports already contains the attachment
-        if (ports.size() >= 4) {
+        if (ports.size() + toAttach.size() >= 4) {
             System.out.println(link.router1.simulatedIPAddress + " is at capacity.");
             return false;
         }
@@ -181,10 +184,11 @@ public class Router {
      * broadcast initial Hello to neighbors
      */
     private void processStart() {
-        for (Link l : ports) {
+        for (Link l : toAttach) {
             if (l == null) continue;
 
             try {
+                this.ports.add(l);
                 Socket socket = new Socket(l.router2.processIPAddress, l.router2.processPortNumber);
                 new Thread(new ClientWorker(socket, this.rd, l)).start();
             } catch (IOException ex) {
