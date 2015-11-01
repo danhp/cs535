@@ -1,5 +1,6 @@
 package socs.network.node;
 
+import socs.network.message.LSA;
 import socs.network.message.SOSPFPacket;
 
 import java.io.IOException;
@@ -64,23 +65,38 @@ public class ServerWorker implements Runnable {
 
                         // Add link to database
                         Router.addToDatabase(this.link);
-
-                        // Trigger an update to add.
                         Router.triggerUpdateAdd();
                     }
 
                     System.out.println("Received HELLO from " + link.router2.simulatedIPAddress + " : ");
                     System.out.println("Set " + link.router2.simulatedIPAddress + " state to " + link.router2.status);
+
+                // Response packet is update message.
+                } else {
+                    boolean alreadySeen = true;
+                    for (LSA lsa: responsePacket.lsaArray) {
+                        if (Router.lsd._store.containsKey(lsa.linkStateID)) {
+                            LSA localLsa = Router.lsd._store.get(lsa.linkStateID);
+
+                            if (lsa.lsaSeqNumber > localLsa.lsaSeqNumber) {
+                                Router.lsd._store.put(lsa.linkStateID, lsa);
+                                alreadySeen = false;
+                            }
+                        } else {
+                            Router.lsd._store.put(lsa.linkStateID, lsa);
+                            alreadySeen = false;
+                        }
+
+                    }
+
+                    if (!alreadySeen) {
+                        System.out.println("Triggered Update");
+                        Router.triggerUpdateAdd();
+                    }
                 }
             }
         } catch(IOException ex) {
-            if (this.link.router2.simulatedIPAddress == null ) return;
-            System.out.println("Lost connection to: " + this.link.router2.simulatedIPAddress);
-            Router.ports.remove(this.link);
-
-            // Trigger an update to remove.
-            Router.triggerUpdateRemove(this.link.router2.simulatedIPAddress);
-
+            System.out.println(ex);
         } catch (ClassNotFoundException ex) {
             System.out.println(ex);
         } catch (Exception ex) {

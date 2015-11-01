@@ -52,13 +52,11 @@ public class ClientWorker implements Runnable {
                     //Print out connection
                     System.out.println("Received HELLO from " + newLink.router2.simulatedIPAddress + " : ");
                     System.out.println(" Set " + newLink.router2.simulatedIPAddress + " state to " + newLink.router2.status);
+                    output.writeObject(broadcastPacket);
 
                     // Add the link info to the database
                     Router.addToDatabase(this.newLink);
-
-                    Router.triggerUpdateAdd();
-
-                    output.writeObject(broadcastPacket);
+                    return;
                 }
             }
 
@@ -67,10 +65,6 @@ public class ClientWorker implements Runnable {
             if (!Router.ports.contains(this.newLink)) return;
 
             System.out.println("Lost connection to: " + this.newLink.router2.simulatedIPAddress);
-            Router.ports.remove(this.newLink);
-
-            // Trigger an update to remove
-
         } catch (Exception ex) {
             System.out.println(ex);
         }

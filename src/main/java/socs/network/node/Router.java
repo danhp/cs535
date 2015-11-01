@@ -2,16 +2,19 @@ package socs.network.node;
 
 import socs.network.message.LSA;
 import socs.network.message.LinkDescription;
+import socs.network.message.SOSPFPacket;
 import socs.network.util.Configuration;
 
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.ObjectOutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Random;
+import java.util.Vector;
 
 
 public class Router {
@@ -21,7 +24,7 @@ public class Router {
     private ServerSocket serverSocket;
 
 
-    RouterDescription rd = new RouterDescription();
+    public static RouterDescription rd = new RouterDescription();
 
     //assuming that all routers are with 4 ports
     // Link[] ports = new Link[4];
@@ -90,12 +93,23 @@ public class Router {
      * @param destinationIP the ip adderss of the destination simulated router
      */
     private void processDetect(String destinationIP) {
+        System.out.println(lsd);
+
         System.out.println(lsd.getShortestPath(destinationIP));
     }
 
     public static synchronized void triggerUpdateAdd() {
-        System.out.println(lsd);
+        System.out.println("Triggering Update");
+        for (Link l: ports) {
+            if (l == null) continue;
 
+            try {
+                Socket socket = new Socket("0.0.0.0", l.router2.processPortNumber);
+                new Thread(new ClienUpdateWorker(socket, Router.rd, l)).start();
+            } catch (IOException ex) {
+                System.out.println(ex);
+            }
+        }
     }
 
     public static synchronized void triggerUpdateRemove(String simulatedAdress) {
