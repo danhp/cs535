@@ -8,6 +8,7 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.Socket;
 import java.sql.SQLSyntaxErrorException;
+import java.util.Vector;
 
 public class ServerWorker implements Runnable {
 
@@ -63,35 +64,23 @@ public class ServerWorker implements Runnable {
 
                         // Add link to database
                         Router.addToDatabase(this.link);
+
+                        Router.updateDatabase(responsePacket.lsaArray);
+
+                        // Save the output stream for later.
+                        Router.outputs.add(output);
+
+                        // Create an update listener.
+                        Router.createUpdateListener(input);
+
+                        // Send first update message
                         Router.triggerUpdateAdd();
                     }
 
                     System.out.println("Received HELLO from " + link.router2.simulatedIPAddress + " : ");
                     System.out.println("Set " + link.router2.simulatedIPAddress + " state to " + link.router2.status);
 
-                // Response packet is update message.
-                } else {
-                    boolean alreadySeen = true;
-                    for (LSA lsa: responsePacket.lsaArray) {
-                        if (Router.lsd._store.containsKey(lsa.linkStateID)) {
-                            LSA localLsa = Router.lsd._store.get(lsa.linkStateID);
-
-                            if (lsa.lsaSeqNumber > localLsa.lsaSeqNumber) {
-                                Router.lsd._store.put(lsa.linkStateID, lsa);
-                                alreadySeen = false;
-                            }
-                        } else {
-                            Router.lsd._store.put(lsa.linkStateID, lsa);
-                            alreadySeen = false;
-                        }
-
-                    }
-
-                    System.out.println(Router.lsd.toString());
-
-                    if (!alreadySeen) {
-                        Router.triggerUpdateAdd();
-                    }
+                    if (this.link.router2.status == RouterStatus.TWO_WAY) return;
                 }
             }
         } catch(IOException ex) {
@@ -99,7 +88,7 @@ public class ServerWorker implements Runnable {
         } catch (ClassNotFoundException ex) {
             System.out.println(ex);
         } catch (Exception ex) {
-            System.out.println(ex);
+            return;
         }
     }
 }

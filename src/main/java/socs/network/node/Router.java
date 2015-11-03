@@ -5,10 +5,7 @@ import socs.network.message.LinkDescription;
 import socs.network.message.SOSPFPacket;
 import socs.network.util.Configuration;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.ObjectOutputStream;
+import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.List;
@@ -19,10 +16,8 @@ import java.util.Vector;
 
 public class Router {
     protected static LinkStateDatabase lsd;
-    private boolean serverIsRunning;
 
     private ServerSocket serverSocket;
-
 
     public static RouterDescription rd = new RouterDescription();
 
@@ -31,10 +26,11 @@ public class Router {
     public static List<Link> ports = new ArrayList<Link>(4);
     private static List<Link> toAttach = new ArrayList<Link>(4);
 
+    public static List<ObjectOutputStream> outputs = new ArrayList<ObjectOutputStream>(4);
+
     public Router(Configuration config) {
         rd.simulatedIPAddress = config.getString("socs.network.router.ip");
         lsd = new LinkStateDatabase(rd);
-        serverIsRunning = false;
 
         System.out.println("Router initialized with IP : " + rd.simulatedIPAddress);
 
@@ -91,20 +87,51 @@ public class Router {
     }
 
     public static synchronized void triggerUpdateAdd() {
-        for (Link l: ports) {
-            if (l == null) continue;
+        for (ObjectOutputStream o : outputs) {
+            if (o == null) continue;
 
-            try {
-                Socket socket = new Socket("0.0.0.0", l.router2.processPortNumber);
-                new Thread(new ClienUpdateWorker(socket, Router.rd, l)).start();
-            } catch (IOException ex) {
-                System.out.println(ex);
-            }
+            new Thread(new ClientUpdateWorker(o, Router.rd)).start();
         }
     }
 
     public static synchronized void triggerUpdateRemove(String simulatedAdress) {
 
+    }
+
+    public static synchronized void createUpdateListener(final ObjectInputStream input) {
+        new Thread(new Runnable() {
+            public void run() {
+                try {
+                    SOSPFPacket updatePacket;
+                    while (true) {
+                        updatePacket = (SOSPFPacket) input.readObject();
+
+                        if (updateDatabase(updatePacket.lsaArray)) {
+                            Router.triggerUpdateAdd();
+                        }
+                    }
+
+                } catch (IOException e) {
+                    System.out.println(e);
+                } catch (ClassNotFoundException e) {
+                    System.out.println(e);
+                }
+            }
+        }).start();
+    }
+
+
+    public static synchronized boolean updateDatabase(Vector<LSA> v) {
+        boolean alreadySeen = true;
+        for (LSA lsa: v) {
+            LSA inDatabase =  Router.lsd._store.get(lsa.linkStateID);
+            if (inDatabase == null || lsa.lsaSeqNumber > inDatabase.lsaSeqNumber) {
+                Router.lsd._store.put(lsa.linkStateID, lsa);
+                alreadySeen = false;
+            }
+        }
+
+        return (!alreadySeen);
     }
 
     /**

@@ -52,10 +52,28 @@ public class ClientWorker implements Runnable {
                     //Print out connection
                     System.out.println("Received HELLO from " + newLink.router2.simulatedIPAddress + " : ");
                     System.out.println(" Set " + newLink.router2.simulatedIPAddress + " state to " + newLink.router2.status);
-                    output.writeObject(broadcastPacket);
 
                     // Add the link info to the database
                     Router.addToDatabase(this.newLink);
+
+                    SOSPFPacket responsePacket = new SOSPFPacket();
+                    responsePacket.srcIP = serverRd.simulatedIPAddress;
+                    responsePacket.dstIP = clientSocket.getRemoteSocketAddress().toString();
+                    responsePacket.neighborID = serverRd.simulatedIPAddress;
+                    responsePacket.srcProcessIP = serverRd.processIPAddress;
+                    responsePacket.routerID = serverRd.simulatedIPAddress;
+                    responsePacket.weight = this.newLink.weight;
+                    responsePacket.sospfType = 0;
+                    responsePacket.srcProcessPort = serverRd.processPortNumber;
+                    responsePacket.lsaArray = Router.lsd.toVector();
+
+                    output.writeObject(responsePacket);
+
+                    // save the output stream for later
+                    Router.outputs.add(output);
+
+                    // Create an update listener
+                    Router.createUpdateListener(input);
                     return;
                 }
             }
@@ -66,7 +84,7 @@ public class ClientWorker implements Runnable {
 
             System.out.println("Lost connection to: " + this.newLink.router2.simulatedIPAddress);
         } catch (Exception ex) {
-            System.out.println(ex);
+            return;
         }
 
     }

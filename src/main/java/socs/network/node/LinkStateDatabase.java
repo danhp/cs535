@@ -135,15 +135,24 @@ public class LinkStateDatabase {
         }
         return sb.toString();
     }
-}
 
-    class Node {
-        public int priority;
-        public String nodeId;
-
-        public Node(int priority, String name) {
-            this.priority = priority;
-            this.nodeId = name;
+    public Vector<LSA> toVector() {
+        Vector<LSA> vector = new Vector<LSA>();
+        for (LSA lsa : _store.values()) {
+            vector.add(lsa);
         }
 
+        return vector;
     }
+}
+
+class Node {
+    public int priority;
+    public String nodeId;
+
+    public Node(int priority, String name) {
+        this.priority = priority;
+        this.nodeId = name;
+    }
+
+}
