@@ -56,7 +56,7 @@ public class LinkStateDatabase {
                 }
                 int newCost = costSoFar.get(current.nodeId) + l.tosMetrics;
 
-                if (!seenSoFar.contains(l.linkID)){
+                if (!seenSoFar.contains(l.linkID) || newCost < costSoFar.get(l.linkID)){
                     queue.add(new Node(newCost, l.linkID));
                     costSoFar.put(l.linkID, newCost);
                     cameFrom.put(l.linkID, current.nodeId);
@@ -136,7 +136,7 @@ public class LinkStateDatabase {
         return sb.toString();
     }
 
-    public Vector<LSA> toVector() {
+    public synchronized Vector<LSA> toVector() {
         Vector<LSA> vector = new Vector<LSA>();
         for (LSA lsa : _store.values()) {
             vector.add(lsa);

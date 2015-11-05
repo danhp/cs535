@@ -222,6 +222,8 @@ public class Router {
                 System.out.println(ex);
             }
         }
+
+        toAttach = new ArrayList<Link>(4);
     }
 
     /**
