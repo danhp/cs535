@@ -24,11 +24,22 @@ public class LinkStateDatabase {
      * output the shortest path from this router to the destination with the given IP address
      */
     String getShortestPath(String destinationIP) {
-        if (destinationIP.equals(rd.simulatedIPAddress)) return "No Path Found";
+        if (destinationIP.equals(rd.simulatedIPAddress)) return "Same Node";
+
+        class Node {
+            public int priority;
+            public String nodeId;
+
+            public Node(int priority, String name) {
+                this.priority = priority;
+                this.nodeId = name;
+            }
+
+        }
 
         PriorityQueue<Node> queue = new PriorityQueue<Node>(_store.size(), new Comparator<Node>() {
             public int compare(Node o1, Node o2) {
-                if (o1.priority < o2.priority) return 0;
+                if (o1.priority < o2.priority) return -1;
                 else return 1;
             }
         });
@@ -47,6 +58,22 @@ public class LinkStateDatabase {
         while (!queue.isEmpty()) {
             current = queue.remove();
 
+            if (current.nodeId.equals(destinationIP)) {
+                System.out.println("Path Found");
+                ArrayList<String> path = new ArrayList<String>();
+                path.add(destinationIP);
+
+                String currentName = destinationIP;
+                while(!currentName.equals(rd.simulatedIPAddress)) {
+                    currentName = cameFrom.get(currentName);
+                    path.add(currentName);
+                }
+
+                Collections.reverse(path);
+
+                return formatPath(path);
+            }
+
             for (LinkDescription l : _store.get(current.nodeId).links) {
 
                 // weigth of 0 is the same router we already saw
@@ -62,22 +89,6 @@ public class LinkStateDatabase {
                     cameFrom.put(l.linkID, current.nodeId);
                 }
                 seenSoFar.add(l.linkID);
-
-                if (l.linkID.equals(destinationIP)) {
-                    System.out.println("Path Found");
-                    ArrayList<String> path = new ArrayList<String>();
-                    path.add(destinationIP);
-
-                    String currentName = destinationIP;
-                    while(!currentName.equals(rd.simulatedIPAddress)) {
-                        currentName = cameFrom.get(currentName);
-                        path.add(currentName);
-                    }
-
-                    Collections.reverse(path);
-
-                    return formatPath(path);
-                }
             }
         }
         return "No path found";
@@ -146,13 +157,4 @@ public class LinkStateDatabase {
     }
 }
 
-class Node {
-    public int priority;
-    public String nodeId;
 
-    public Node(int priority, String name) {
-        this.priority = priority;
-        this.nodeId = name;
-    }
-
-}

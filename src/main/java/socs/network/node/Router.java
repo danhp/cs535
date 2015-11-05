@@ -90,7 +90,18 @@ public class Router {
         for (ObjectOutputStream o : outputs) {
             if (o == null) continue;
 
-            new Thread(new ClientUpdateWorker(o, Router.rd)).start();
+            // Update packet
+            SOSPFPacket updatePacket = new SOSPFPacket();
+            updatePacket.srcIP = rd.simulatedIPAddress;
+            updatePacket.sospfType = 1;
+            updatePacket.lsaArray = Router.lsd.toVector();
+
+            try {
+                o.reset();
+                o.writeObject(updatePacket);
+            } catch (IOException e) {
+                System.out.println(e);
+            }
         }
     }
 
@@ -210,14 +221,14 @@ public class Router {
     /**
      * broadcast initial Hello to neighbors
      */
-    private void processStart() {
+    private static synchronized void processStart() {
         for (Link l : toAttach) {
             if (l == null) continue;
 
             try {
-                this.ports.add(l);
+                Router.ports.add(l);
                 Socket socket = new Socket(l.router2.processIPAddress, l.router2.processPortNumber);
-                new Thread(new ClientWorker(socket, this.rd, l)).start();
+                new Thread(new ClientWorker(socket, Router.rd, l)).start();
             } catch (IOException ex) {
                 System.out.println(ex);
             }
