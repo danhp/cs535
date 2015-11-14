@@ -245,7 +245,21 @@ public class Router {
      * This command does trigger the link database synchronization
      */
     private void processConnect(String processIP, short processPort, String simulatedIP, short weight) {
+        RouterDescription newRd = new RouterDescription();
+        newRd.processIPAddress = processIP;
+        newRd.processPortNumber = processPort;
+        newRd.simulatedIPAddress = simulatedIP;
 
+        Link newLink = new Link(this.rd, newRd, weight);
+        boolean success = this.addLink(newLink);
+        if (success) {
+            try {
+                Socket socket = new Socket(processIP, processPort);
+                new Thread(new ClientWorker(socket, this.rd, newLink)).start();
+            } catch (IOException e) {
+                System.out.println(e);
+            }
+        }
     }
 
     /**
@@ -298,7 +312,7 @@ public class Router {
                 } else if (command.equals("start")) {
                     processStart();
 
-                } else if (command.equals("connect ")) {
+                } else if (command.startsWith("connect ")) {
                     String[] cmdLine = command.split(" ");
                     processConnect(cmdLine[1], Short.parseShort(cmdLine[2]),
                             cmdLine[3], Short.parseShort(cmdLine[4]));
