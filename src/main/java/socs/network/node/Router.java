@@ -8,10 +8,8 @@ import socs.network.util.Configuration;
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.List;
-import java.util.ArrayList;
-import java.util.Random;
-import java.util.Vector;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 
 public class Router {
@@ -26,7 +24,7 @@ public class Router {
     public static List<Link> ports = new ArrayList<Link>(4);
     private static List<Link> toAttach = new ArrayList<Link>(4);
 
-    public static List<ObjectOutputStream> outputs = new ArrayList<ObjectOutputStream>(4);
+    public static Map<String, ObjectOutputStream> outputs = new ConcurrentHashMap<String, ObjectOutputStream>(4);
 
     public Router(Configuration config) {
         rd.simulatedIPAddress = config.getString("socs.network.router.ip");
@@ -87,7 +85,7 @@ public class Router {
     }
 
     public static synchronized void triggerUpdateAdd() {
-        for (ObjectOutputStream o : outputs) {
+        for (ObjectOutputStream o : outputs.values()) {
             if (o == null) continue;
 
             // Update packet
@@ -105,10 +103,6 @@ public class Router {
         }
     }
 
-    public static synchronized void triggerUpdateRemove(String simulatedAdress) {
-
-    }
-
     public static synchronized void createUpdateListener(final ObjectInputStream input) {
         new Thread(new Runnable() {
             public void run() {
@@ -118,7 +112,36 @@ public class Router {
                         updatePacket = (SOSPFPacket) input.readObject();
 
                         if (updateDatabase(updatePacket.lsaArray)) {
-                            Router.triggerUpdateAdd();
+                            // Sender is disconnecting
+                            if (updatePacket.sospfType == 2 ) {
+                                System.out.println("Received a request to disconnect from: " + updatePacket.srcIP);
+
+                                // Update local database
+                                LSA lsa = Router.lsd._store.get(Router.rd.simulatedIPAddress);
+                                for (LinkDescription ld : lsa.links) {
+                                    if (ld.linkID.equals(updatePacket.srcIP)) {
+                                        lsa.links.remove(ld);
+                                        lsa.lsaSeqNumber++;
+                                        break;
+                                    }
+                                }
+
+                                // Remove communication channel
+                                Router.outputs.remove(updatePacket.srcIP);
+                                for (Link l: Router.ports) {
+                                   if (l.router2.simulatedIPAddress.equals(updatePacket.srcIP)) {
+                                       Router.ports.remove(l);
+                                       break;
+                                   }
+                                }
+
+                                // End this thread
+                                Router.triggerUpdateAdd();
+                                return;
+
+                            } else {
+                                Router.triggerUpdateAdd();
+                            }
                         }
                     }
 
@@ -151,12 +174,41 @@ public class Router {
      *
      * @param portNumber the port number which the link attaches at
      */
-    private void processDisconnect(short portNumber) {
+    private synchronized void processDisconnect(short portNumber) {
         for (Link l : ports) {
             if (l.router2.processPortNumber == portNumber) {
+
+                System.out.println("Disconnecting from: " + l.router2.simulatedIPAddress);
+
+                // Remove from local ports
                 ports.remove(l);
 
-                // TODO: Announce change.
+                // Remove from local database
+                LSA lsa = this.lsd._store.get(this.rd.simulatedIPAddress);
+                for (LinkDescription ld : lsa.links) {
+                    if (ld.linkID.equals(l.router2.simulatedIPAddress)) {
+                        lsa.links.remove(ld);
+                        lsa.lsaSeqNumber++;
+                        break;
+                    }
+                }
+
+                // Update packet
+                SOSPFPacket disconnectPacket = new SOSPFPacket();
+                disconnectPacket.srcIP = rd.simulatedIPAddress;
+                disconnectPacket.sospfType = 2;
+                disconnectPacket.lsaArray = this.lsd.toVector();
+
+                ObjectOutputStream o = this.outputs.get(l.router2.simulatedIPAddress);
+                this.outputs.remove(l.router2.simulatedIPAddress);
+                try{
+                    o.reset();
+                    o.writeObject(disconnectPacket);
+                } catch(IOException e) {
+                    System.out.println(e);
+                }
+
+                return;
             }
         }
     }
@@ -212,10 +264,6 @@ public class Router {
         LSA lsa = lsd._store.get(link.router1.simulatedIPAddress);
         lsa.links.add(ld);
         lsa.lsaSeqNumber++;
-    }
-
-    public static synchronized void removeFromDatabase(Link link) {
-
     }
 
     /**

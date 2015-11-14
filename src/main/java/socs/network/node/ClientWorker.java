@@ -70,7 +70,7 @@ public class ClientWorker implements Runnable {
                     output.writeObject(responsePacket);
 
                     // save the output stream for later
-                    Router.outputs.add(output);
+                    Router.outputs.put(remoteRouter.simulatedIPAddress, output);
 
                     // Create an update listener
                     Router.createUpdateListener(input);

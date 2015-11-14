@@ -68,7 +68,7 @@ public class ServerWorker implements Runnable {
                         Router.updateDatabase(responsePacket.lsaArray);
 
                         // Save the output stream for later.
-                        Router.outputs.add(output);
+                        Router.outputs.put(this.link.router2.simulatedIPAddress, output);
 
                         // Create an update listener.
                         Router.createUpdateListener(input);
