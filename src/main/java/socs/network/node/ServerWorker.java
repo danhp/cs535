@@ -71,7 +71,7 @@ public class ServerWorker implements Runnable {
                         Router.outputs.put(this.link.router2.simulatedIPAddress, output);
 
                         // Create an update listener.
-                        Router.createUpdateListener(input);
+                        Router.createUpdateListener(input, this.link.router2.simulatedIPAddress);
 
                         // Send first update message
                         Router.triggerUpdateAdd();

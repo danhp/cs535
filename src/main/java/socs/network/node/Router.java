@@ -103,7 +103,7 @@ public class Router {
         }
     }
 
-    public static synchronized void createUpdateListener(final ObjectInputStream input) {
+    public static synchronized void createUpdateListener(final ObjectInputStream input, final String remoteIp) {
         new Thread(new Runnable() {
             public void run() {
                 try {
@@ -116,24 +116,8 @@ public class Router {
                             if (updatePacket.sospfType == 2 ) {
                                 System.out.println("Received a request to disconnect from: " + updatePacket.srcIP);
 
-                                // Update local database
-                                LSA lsa = Router.lsd._store.get(Router.rd.simulatedIPAddress);
-                                for (LinkDescription ld : lsa.links) {
-                                    if (ld.linkID.equals(updatePacket.srcIP)) {
-                                        lsa.links.remove(ld);
-                                        lsa.lsaSeqNumber++;
-                                        break;
-                                    }
-                                }
-
-                                // Remove communication channel
-                                Router.outputs.remove(updatePacket.srcIP);
-                                for (Link l: Router.ports) {
-                                   if (l.router2.simulatedIPAddress.equals(updatePacket.srcIP)) {
-                                       Router.ports.remove(l);
-                                       break;
-                                   }
-                                }
+                                // Update local data
+                                Router.disconnectIP(updatePacket.srcIP);
 
                                 // End this thread
                                 Router.triggerUpdateAdd();
@@ -146,7 +130,10 @@ public class Router {
                     }
 
                 } catch (IOException e) {
-                    System.out.println(e);
+                    System.out.println("Disconnection from: " + remoteIp);
+                    Router.disconnectIP(remoteIp);
+                    Router.triggerUpdateAdd();
+                    return;
                 } catch (ClassNotFoundException e) {
                     System.out.println(e);
                 }
@@ -154,6 +141,26 @@ public class Router {
         }).start();
     }
 
+    public static synchronized void disconnectIP(String remoteIp) {
+        // Update local database
+        LSA lsa = lsd._store.get(Router.rd.simulatedIPAddress);
+        for (LinkDescription ld : lsa.links) {
+            if (ld.linkID.equals(remoteIp)) {
+                lsa.links.remove(ld);
+                lsa.lsaSeqNumber++;
+                break;
+            }
+        }
+
+        // Remove communication channel
+        outputs.remove(remoteIp);
+        for (Link l: ports) {
+            if (l.router2.simulatedIPAddress.equals(remoteIp)) {
+                ports.remove(l);
+                break;
+            }
+        }
+    }
 
     public static synchronized boolean updateDatabase(Vector<LSA> v) {
         boolean alreadySeen = true;
@@ -175,42 +182,41 @@ public class Router {
      * @param portNumber the port number which the link attaches at
      */
     private synchronized void processDisconnect(short portNumber) {
-        for (Link l : ports) {
-            if (l.router2.processPortNumber == portNumber) {
+        if (portNumber >= ports.size()) return;
+        Link l = ports.get(portNumber);
+        if (l == null) return;
 
-                System.out.println("Disconnecting from: " + l.router2.simulatedIPAddress);
+        System.out.println("Disconnecting from: " + l.router2.simulatedIPAddress);
 
-                // Remove from local ports
-                ports.remove(l);
+        // Remove from local ports
+        ports.remove(l);
 
-                // Remove from local database
-                LSA lsa = this.lsd._store.get(this.rd.simulatedIPAddress);
-                for (LinkDescription ld : lsa.links) {
-                    if (ld.linkID.equals(l.router2.simulatedIPAddress)) {
-                        lsa.links.remove(ld);
-                        lsa.lsaSeqNumber++;
-                        break;
-                    }
-                }
-
-                // Update packet
-                SOSPFPacket disconnectPacket = new SOSPFPacket();
-                disconnectPacket.srcIP = rd.simulatedIPAddress;
-                disconnectPacket.sospfType = 2;
-                disconnectPacket.lsaArray = this.lsd.toVector();
-
-                ObjectOutputStream o = this.outputs.get(l.router2.simulatedIPAddress);
-                this.outputs.remove(l.router2.simulatedIPAddress);
-                try{
-                    o.reset();
-                    o.writeObject(disconnectPacket);
-                } catch(IOException e) {
-                    System.out.println(e);
-                }
-
-                return;
+        // Remove from local database
+        LSA lsa = this.lsd._store.get(this.rd.simulatedIPAddress);
+        for (LinkDescription ld : lsa.links) {
+            if (ld.linkID.equals(l.router2.simulatedIPAddress)) {
+                lsa.links.remove(ld);
+                lsa.lsaSeqNumber++;
+                break;
             }
         }
+
+        // Update packet
+        SOSPFPacket disconnectPacket = new SOSPFPacket();
+        disconnectPacket.srcIP = rd.simulatedIPAddress;
+        disconnectPacket.sospfType = 2;
+        disconnectPacket.lsaArray = this.lsd.toVector();
+
+        ObjectOutputStream o = this.outputs.get(l.router2.simulatedIPAddress);
+        this.outputs.remove(l.router2.simulatedIPAddress);
+        try{
+            o.reset();
+            o.writeObject(disconnectPacket);
+        } catch(IOException e) {
+            System.out.println(e);
+        }
+
+        return;
     }
 
     /**
@@ -328,7 +334,6 @@ public class Router {
      * disconnect with all neighbors and quit the program
      */
     private void processQuit() {
-        // TODO: Announce this router is quitting.
         System.out.println("Process has quit succesfully.");
         return;
     }
