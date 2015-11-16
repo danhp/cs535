@@ -13,6 +13,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 
 public class Router {
+    public final long EXPIRE_DELAY = 10000;
+
     protected static LinkStateDatabase lsd;
 
     private ServerSocket serverSocket;
@@ -25,6 +27,7 @@ public class Router {
     private static List<Link> toAttach = new ArrayList<Link>(4);
 
     public static Map<String, ObjectOutputStream> outputs = new ConcurrentHashMap<String, ObjectOutputStream>(4);
+    public static Map<String, Long> expireTimes = new ConcurrentHashMap<String, Long>();
 
     public Router(Configuration config) {
         rd.simulatedIPAddress = config.getString("socs.network.router.ip");
@@ -71,6 +74,21 @@ public class Router {
                 }
             }
         }).start();
+
+        // Start the cleanup Thread.
+        new Thread(new Runnable() {
+            public void run() {
+               try {
+                   while (true) {
+                       Thread.sleep(EXPIRE_DELAY);
+                       System.out.println("Running cleanup");
+                       cleanup();
+                   }
+               } catch (InterruptedException e) {
+                   System.out.println(e);
+               }
+            }
+        }).start();
     }
 
     /**
@@ -104,16 +122,19 @@ public class Router {
     }
 
     public static synchronized void createUpdateListener(final ObjectInputStream input, final String remoteIp) {
+        expireTimes.put(remoteIp, System.currentTimeMillis());
+
+        // The listener thread.
         new Thread(new Runnable() {
             public void run() {
-                try {
-                    SOSPFPacket updatePacket;
-                    while (true) {
-                        updatePacket = (SOSPFPacket) input.readObject();
+            try {
+                SOSPFPacket updatePacket;
+                while (true) {
+                    updatePacket = (SOSPFPacket) input.readObject();
 
-                        if (updateDatabase(updatePacket.lsaArray)) {
-                            // Sender is disconnecting
-                            if (updatePacket.sospfType == 2 ) {
+                    if (updateDatabase(updatePacket.lsaArray)) {
+                        switch (updatePacket.sospfType) {
+                            case 2: // Sender is disconnecting
                                 System.out.println("Received a request to disconnect from: " + updatePacket.srcIP);
 
                                 // Update local data
@@ -122,20 +143,64 @@ public class Router {
                                 // End this thread
                                 Router.triggerUpdateAdd();
                                 return;
-
-                            } else {
+                            case 3: // Received heartbeat
+                                updatePacket.sospfType = 4;
+                                synchronized (expireTimes) {
+                                    expireTimes.put(remoteIp, System.currentTimeMillis());
+                                }
+                                synchronized (outputs) {
+                                    try {
+                                        outputs.get(remoteIp).writeObject(updatePacket);
+                                    } catch (IOException e) {
+                                        System.out.println("Failed to respond to heartbeat");
+                                        disconnectIP(remoteIp);
+                                    }
+                                }
+                                return;
+                            case 4: // Received heartbeat response
+                                synchronized (expireTimes) {
+                                    expireTimes.put(remoteIp, System.currentTimeMillis());
+                                }
+                                return;
+                            default: // General update
                                 Router.triggerUpdateAdd();
-                            }
+                                return;
                         }
                     }
+                }
 
-                } catch (IOException e) {
-                    System.out.println("Disconnection from: " + remoteIp);
-                    Router.disconnectIP(remoteIp);
-                    Router.triggerUpdateAdd();
-                    return;
-                } catch (ClassNotFoundException e) {
-                    System.out.println(e);
+            } catch (IOException e) {
+                System.out.println("Lost connection to: " + remoteIp);
+                Router.disconnectIP(remoteIp);
+                Router.triggerUpdateAdd();
+                return;
+            } catch (ClassNotFoundException e) {
+                System.out.println(e);
+            }
+            }
+        }).start();
+
+        // The heartbeat thread
+        new Thread(new Runnable() {
+            public void run() {
+                while (true) {
+                    try {
+                        Thread.sleep(10000/2);
+                        SOSPFPacket heartbeatPacket = new SOSPFPacket();
+                        heartbeatPacket.srcIP = Router.rd.simulatedIPAddress;
+                        heartbeatPacket.sospfType = 3;
+                        synchronized (outputs) {
+                            try {
+                                outputs.get(remoteIp).writeObject(heartbeatPacket);
+                            } catch (IOException e) {
+                                System.out.println("Failed to write heartbeat");
+                                disconnectIP(remoteIp);
+                                return;
+                            }
+                        }
+                    } catch (InterruptedException e) {
+                        return;
+                    }
                 }
             }
         }).start();
@@ -336,6 +401,19 @@ public class Router {
     private void processQuit() {
         System.out.println("Process has quit succesfully.");
         return;
+    }
+
+    private synchronized void cleanup() {
+        boolean ran = false;
+        for (Map.Entry<String, Long> entry: expireTimes.entrySet()) {
+            if (entry.getValue() + EXPIRE_DELAY < System.currentTimeMillis()) {
+                disconnectIP(entry.getKey());
+                ran = true;
+            }
+        }
+        if (ran) {
+            triggerUpdateAdd();
+        }
     }
 
     public void terminal() {
