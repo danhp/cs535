@@ -9,7 +9,7 @@ import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.*;
 
 
 public class Router {
@@ -28,6 +28,8 @@ public class Router {
 
     public static Map<String, ObjectOutputStream> outputs = new ConcurrentHashMap<String, ObjectOutputStream>(4);
     public static Map<String, Long> expireTimes = new ConcurrentHashMap<String, Long>();
+
+    private static ExecutorService executorService = Executors.newCachedThreadPool();
 
     public Router(Configuration config) {
         rd.simulatedIPAddress = config.getString("socs.network.router.ip");
@@ -52,7 +54,7 @@ public class Router {
         }
 
         // Start the server
-        new Thread(new Runnable() {
+        Thread server = new Thread(new Runnable() {
             public void run() {
                 try {
                     while (true) {
@@ -73,10 +75,11 @@ public class Router {
                     System.out.println(ex);
                 }
             }
-        }).start();
+        });
+        executorService.execute(server);
 
         // Start the cleanup Thread.
-        new Thread(new Runnable() {
+        Thread cleanup = new Thread(new Runnable() {
             public void run() {
                try {
                    while (true) {
@@ -88,7 +91,8 @@ public class Router {
                    System.out.println(e);
                }
             }
-        }).start();
+        });
+        executorService.execute(cleanup);
     }
 
     /**
@@ -125,16 +129,17 @@ public class Router {
         expireTimes.put(remoteIp, System.currentTimeMillis());
 
         // The listener thread.
-        new Thread(new Runnable() {
+        Thread listener = new Thread(new Runnable() {
             public void run() {
-            try {
-                SOSPFPacket updatePacket;
-                while (true) {
-                    updatePacket = (SOSPFPacket) input.readObject();
+                try {
+                    SOSPFPacket updatePacket;
+                    while (true) {
+                        updatePacket = (SOSPFPacket) input.readObject();
+                        updateDatabase(updatePacket.lsaArray);
 
-                    if (updateDatabase(updatePacket.lsaArray)) {
+                        System.out.println(updatePacket.sospfType);
                         switch (updatePacket.sospfType) {
-                            case 2: // Sender is disconnecting
+                            case (short) 2: // Sender is disconnecting
                                 System.out.println("Received a request to disconnect from: " + updatePacket.srcIP);
 
                                 // Update local data
@@ -143,9 +148,10 @@ public class Router {
                                 // End this thread
                                 Router.triggerUpdateAdd();
                                 return;
-                            case 3: // Received heartbeat
+                            case (short) 3: // Received heartbeat
                                 updatePacket.sospfType = 4;
                                 synchronized (expireTimes) {
+                                    System.out.println("rec 1");
                                     expireTimes.put(remoteIp, System.currentTimeMillis());
                                 }
                                 synchronized (outputs) {
@@ -154,11 +160,13 @@ public class Router {
                                     } catch (IOException e) {
                                         System.out.println("Failed to respond to heartbeat");
                                         disconnectIP(remoteIp);
+                                        triggerUpdateAdd();
                                     }
                                 }
                                 return;
-                            case 4: // Received heartbeat response
+                            case (short) 4: // Received heartbeat response
                                 synchronized (expireTimes) {
+                                    System.out.println("rec 2");
                                     expireTimes.put(remoteIp, System.currentTimeMillis());
                                 }
                                 return;
@@ -167,47 +175,50 @@ public class Router {
                                 return;
                         }
                     }
+
+                } catch (IOException e) {
+                    System.out.println("Lost connection to: " + remoteIp);
+                    Router.disconnectIP(remoteIp);
+                    Router.triggerUpdateAdd();
+                    return;
+                } catch (ClassNotFoundException e) {
+                    System.out.println(e);
                 }
-
-            } catch (IOException e) {
-                System.out.println("Lost connection to: " + remoteIp);
-                Router.disconnectIP(remoteIp);
-                Router.triggerUpdateAdd();
-                return;
-            } catch (ClassNotFoundException e) {
-                System.out.println(e);
             }
-            }
-        }).start();
+        });
+        executorService.execute(listener);
 
-        if (!createHeart) return;
-
-        // The heartbeat thread
-        new Thread(new Runnable() {
-            public void run() {
-                while (true) {
-                    try {
-                        Thread.sleep(10000/3);
-                        SOSPFPacket heartbeatPacket = new SOSPFPacket();
-                        heartbeatPacket.srcIP = Router.rd.simulatedIPAddress;
-                        heartbeatPacket.sospfType = 3;
-                        synchronized (outputs) {
-                            try {
-                                ObjectOutputStream o = outputs.get(remoteIp);
-                                if (o == null) return;
-                                o.writeObject(heartbeatPacket);
-                            } catch (IOException e) {
-                                System.out.println("Failed to write heartbeat");
-                                disconnectIP(remoteIp);
-                                return;
+        if (!createHeart) {
+            // The heartbeat thread
+            Thread heart = new Thread(new Runnable() {
+                public void run() {
+                    while (true) {
+                        try {
+                            Thread.sleep(10000/3);
+                            SOSPFPacket heartbeatPacket = new SOSPFPacket();
+                            heartbeatPacket.srcIP = Router.rd.simulatedIPAddress;
+                            heartbeatPacket.sospfType = 3;
+                            synchronized (outputs) {
+                                try {
+                                    System.out.println("Sending heartbeat");
+                                    ObjectOutputStream o = outputs.get(remoteIp);
+                                    if (o == null) return;
+                                    o.writeObject(heartbeatPacket);
+                                    o.reset();
+                                } catch (IOException e) {
+                                    System.out.println("Failed to write heartbeat");
+                                    disconnectIP(remoteIp);
+                                    return;
+                                }
                             }
+                        } catch (InterruptedException e) {
+                            return;
                         }
-                    } catch (InterruptedException e) {
-                        return;
                     }
                 }
-            }
-        }).start();
+            });
+            executorService.execute(heart);
+        }
     }
 
     public static synchronized void disconnectIP(String remoteIp) {
