@@ -121,7 +121,7 @@ public class Router {
         }
     }
 
-    public static synchronized void createUpdateListener(final ObjectInputStream input, final String remoteIp) {
+    public static synchronized void createUpdateListener(final ObjectInputStream input, final String remoteIp, boolean createHeart) {
         expireTimes.put(remoteIp, System.currentTimeMillis());
 
         // The listener thread.
@@ -180,18 +180,22 @@ public class Router {
             }
         }).start();
 
+        if (!createHeart) return;
+
         // The heartbeat thread
         new Thread(new Runnable() {
             public void run() {
                 while (true) {
                     try {
-                        Thread.sleep(10000/2);
+                        Thread.sleep(10000/3);
                         SOSPFPacket heartbeatPacket = new SOSPFPacket();
                         heartbeatPacket.srcIP = Router.rd.simulatedIPAddress;
                         heartbeatPacket.sospfType = 3;
                         synchronized (outputs) {
                             try {
-                                outputs.get(remoteIp).writeObject(heartbeatPacket);
+                                ObjectOutputStream o = outputs.get(remoteIp);
+                                if (o == null) return;
+                                o.writeObject(heartbeatPacket);
                             } catch (IOException e) {
                                 System.out.println("Failed to write heartbeat");
                                 disconnectIP(remoteIp);
@@ -280,6 +284,8 @@ public class Router {
         } catch(IOException e) {
             System.out.println(e);
         }
+
+        triggerUpdateAdd();
 
         return;
     }
@@ -404,15 +410,19 @@ public class Router {
     }
 
     private synchronized void cleanup() {
-        boolean ran = false;
+        List<String> toKill = new ArrayList<String>();
         for (Map.Entry<String, Long> entry: expireTimes.entrySet()) {
             if (entry.getValue() + EXPIRE_DELAY < System.currentTimeMillis()) {
+                System.out.println("Lost connection to: " + entry.getKey() + " (expired)");
                 disconnectIP(entry.getKey());
-                ran = true;
+                toKill.add(entry.getKey());
             }
         }
-        if (ran) {
+        if (!toKill.isEmpty()) {
             triggerUpdateAdd();
+            for (String s : toKill) {
+                expireTimes.remove(s);
+            }
         }
     }
 

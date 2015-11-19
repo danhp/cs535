@@ -73,7 +73,7 @@ public class ClientWorker implements Runnable {
                     Router.outputs.put(remoteRouter.simulatedIPAddress, output);
 
                     // Create an update listener
-                    Router.createUpdateListener(input, remoteRouter.simulatedIPAddress);
+                    Router.createUpdateListener(input, remoteRouter.simulatedIPAddress, false);
                     return;
                 }
             }
