@@ -13,6 +13,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 
 public class Router {
+    public final long EXPIRE_DELAY = 10000;
     protected static LinkStateDatabase lsd;
 
     private ServerSocket serverSocket;
@@ -25,6 +26,7 @@ public class Router {
     private static List<Link> toAttach = new ArrayList<Link>(4);
 
     public static Map<String, ObjectOutputStream> outputs = new ConcurrentHashMap<String, ObjectOutputStream>(4);
+    public static Map<String, Long> expireTimes = new ConcurrentHashMap<String, Long>();
 
     public Router(Configuration config) {
         rd.simulatedIPAddress = config.getString("socs.network.router.ip");
@@ -71,6 +73,20 @@ public class Router {
                 }
             }
         }).start();
+
+        // Start the cleanup thread
+        new Thread(new Runnable() {
+            public void run() {
+                try {
+                    while (true) {
+                        Thread.sleep(EXPIRE_DELAY);
+                        cleanup();
+                    }
+                } catch (InterruptedException e){
+                    System.out.println(e);
+                }
+            }
+        }).start();
     }
 
     /**
@@ -103,7 +119,9 @@ public class Router {
         }
     }
 
-    public static synchronized void createUpdateListener(final ObjectInputStream input, final String remoteIp) {
+    public static synchronized void createUpdateListener(final ObjectInputStream input, final String remoteIp, boolean hearBeat) {
+        expireTimes.put(remoteIp, System.currentTimeMillis());
+
         new Thread(new Runnable() {
             public void run() {
                 try {
@@ -126,17 +144,73 @@ public class Router {
                             } else {
                                 Router.triggerUpdateAdd();
                             }
+                        } else {
+                            if (updatePacket.sospfType == 3) {
+                                updatePacket.sospfType = 4;
+                                synchronized (expireTimes) {
+                                    expireTimes.put(remoteIp, System.currentTimeMillis());
+                                }
+                                synchronized (outputs) {
+                                    try {
+                                        ObjectOutputStream o = outputs.get(remoteIp);
+                                        if (o != null) {
+                                            o.writeObject(updatePacket);
+                                        }
+                                    } catch (IOException e) {
+                                        disconnectIP(remoteIp);
+                                        System.out.print("Failed to write response");
+                                        triggerUpdateAdd();
+                                    }
+                                }
+                            } else {
+                                if (updatePacket.sospfType == 4) {
+                                    expireTimes.put(remoteIp, System.currentTimeMillis());
+                                }
+                            }
                         }
                     }
 
                 } catch (IOException e) {
-                    System.out.println("Disconnection from: " + remoteIp);
+                    System.out.println("Lost connection to: " + remoteIp);
                     Router.disconnectIP(remoteIp);
                     Router.triggerUpdateAdd();
                     return;
                 } catch (ClassNotFoundException e) {
                     System.out.println(e);
                 }
+            }
+        }).start();
+
+        if (!hearBeat) return;
+
+        new Thread(new Runnable() {
+            public void run() {
+                while (true) {
+                    try {
+                        Thread.sleep(10000/2);
+                        SOSPFPacket heartBeat = new SOSPFPacket();
+                        heartBeat.srcIP = rd.simulatedIPAddress;
+                        heartBeat.sospfType = 3;
+                        synchronized (outputs) {
+                            try {
+                                ObjectOutputStream o = outputs.get(remoteIp);
+                                if (o == null) return;
+                                o.reset();
+                                o.writeObject(heartBeat);
+
+                            } catch (IOException e) {
+                                System.out.println("Failed to write heartbeat");
+                                disconnectIP(remoteIp);
+                                triggerUpdateAdd();
+                                return;
+                            }
+                        }
+
+                    } catch (InterruptedException e) {
+                        return;
+                    }
+                }
+
             }
         }).start();
     }
@@ -160,9 +234,13 @@ public class Router {
                 break;
             }
         }
+
+        expireTimes.remove(remoteIp);
     }
 
     public static synchronized boolean updateDatabase(Vector<LSA> v) {
+        if (v == null) return false;
+
         boolean alreadySeen = true;
         for (LSA lsa: v) {
             LSA inDatabase =  Router.lsd._store.get(lsa.linkStateID);
@@ -215,6 +293,8 @@ public class Router {
         } catch(IOException e) {
             System.out.println(e);
         }
+
+        triggerUpdateAdd();
 
         return;
     }
@@ -336,6 +416,23 @@ public class Router {
     private void processQuit() {
         System.out.println("Process has quit succesfully.");
         return;
+    }
+
+    private synchronized void cleanup() {
+        List<String> toKill = new ArrayList<String>();
+        for (Map.Entry<String, Long> entry: expireTimes.entrySet()) {
+            if (entry.getValue() + EXPIRE_DELAY < System.currentTimeMillis()) {
+                System.out.println("Connection expired with: " + entry.getKey());
+                disconnectIP(entry.getKey());
+                toKill.add(entry.getKey());
+            }
+        }
+        if (!toKill.isEmpty()) {
+            for (String s : toKill) {
+                expireTimes.remove(s);
+            }
+            triggerUpdateAdd();
+        }
     }
 
     public void terminal() {
